@@ -187,7 +187,7 @@ class MyPromise {
                 onFulfilled(this.value);
             })
             this.onRejectedCallbacks.push(() => {
-                onRejected.push(this.reason);
+                onRejected(this.reason);
             })
         }
     }
@@ -295,4 +295,15 @@ function errorFunction() {
     console.log("hhhh");
     return Promise.resolve("succ");
 }
-errorFunction().then((data) => { console.log(data) });
+// errorFunction().then((data) => { console.log(data) });
+
+const testObject = new Object();
+testObject.name = "a"
+function changeName(o) {
+    o.name = "bbbb";
+    o = new Object();
+    o.name = "c";
+}
+
+changeName(testObject);
+console.log(testObject.name);
