@@ -147,27 +147,35 @@ function debounce(func, wait) {
 /**
  * Promise
  */
-
+const PENDING = 'pending';
+const FULFILLED='fulfilled';
+const REJECTED = 'rejected';
 class MyPromise {
     constructor(executor) {
-        this.status = 'pending';
+        this.status = PENDING;
         this.value = undefined;
         this.reason = undefined;
         this.onResolvedCallbacks = [];
         this.onRejectedCallbacks = [];
         let resolve = value => {
-            if (this.status == 'pending') {
-                this.status = 'fulfilled';
-                this.value = value;
-                this.onResolvedCallbacks.forEach(fn => fn());
+            const run=()=>{
+                if (this.status == PENDING) {
+                    this.status = FULFILLED;
+                    this.value = value;
+                    this.onResolvedCallbacks.forEach(fn => fn());
+                }
             }
+            setTimeout(run);
         }
         let reject = reason => {
-            if (this.status == 'pending') {
-                this.status = 'rejected';
-                this.reason = reason;
-                this.onRejectedCallbacks.forEach(fn => fn());
+            const run=()=>{
+                if (this.status == PENDING) {
+                    this.status = REJECTED;
+                    this.reason = reason;
+                    this.onRejectedCallbacks.forEach(fn => fn());
+                }
             }
+            setTimeout(run);
         }
         try {
             executor(resolve, reject);
@@ -176,20 +184,101 @@ class MyPromise {
         }
     }
     then(onFulfilled, onRejected) {
-        if (this.status === 'fulfilled') {
-            onFulfilled(this.value);
-        }
-        if (this.status === 'rejected') {
-            onRejected(this.reason);
-        }
-        if (this.status === 'pending') {
-            this.onResolvedCallbacks.push(() => {
-                onFulfilled(this.value);
+        typeof onFulfilled!=='function'?onFulfilled=value=>value:null;
+        typeof onRejected!=='function'?onRejected = reason=>{
+            throw new Error(reason instanceof Error?reason.message:reason)
+        }:null;
+
+        return new MyPromise((resolve,reject)=>{
+            const fulfilledFn = value=>{
+                try{
+                    let x=onFulfilled(value);
+                    x instanceof MyPromise?x.then(resolve,reject):resolve(x);
+                }catch(error){
+                    reject(error)
+                }
+            }
+
+            const rejectedFn = error=>{
+                try{
+                    let x=onRejected(error);
+                    x instanceof MyPromise?x.then(resolve,reject):reject(x);
+                }catch(error){
+                    reject(error);
+                }
+            }
+
+            if (this.status === 'fulfilled') {
+                fulfilledFn(this.value);
+            }
+            if (this.status === 'rejected') {
+                rejectedFn(this.reason);
+            }
+            if (this.status === 'pending') {
+                this.onResolvedCallbacks.push(fulfilledFn)
+                this.onRejectedCallbacks.push(rejectedFn)
+            }
+        });
+        
+    }
+
+    catch(rejectFn){
+        return this.then(undefined,rejectFn);
+    }
+
+    finally(callback){
+        return this.then(
+            value=>MyPromise.resolve(callback()).then(()=>value),
+            reason=>MyPromise.resolve(callback()).then(()=>{throw reason})
+        )
+    }
+
+    static resolve(value){
+        if(value instanceof MyPromise) return value;
+        return new MyPromise(resolve=>resolve(value));
+    }
+
+    static reject(reason){
+        return new MyPromise((resolve,reject)=>{
+            reject(reason)
+        })
+    }
+
+    static all(promiseArr){
+        let index = 0;
+        let result=[];
+
+        return new MyPromise((resolve,reject)=>{
+            promiseArr.forEach((p,i)=>{
+                MyPromise.resolve(p).then(
+                    val=>{
+                        index++;
+                        result[i]=val;
+                        if(index==promiseArr.length){
+                            resolve(result);
+                        }
+                    },
+                    err=>{
+                        reject(err)
+                    }
+                )
             })
-            this.onRejectedCallbacks.push(() => {
-                onRejected(this.reason);
-            })
-        }
+        })
+    }
+
+    static race(promiseArr){
+        return new MyPromise((resolve,reject)=>{
+            for(let p of promiseArr){
+                MyPromise.resolve(p).then(
+                    value=>{
+                        resolve(value)
+                    },
+                    err=>{
+                        reject(err)
+                    }
+                )
+            }
+        })
     }
 }
 
